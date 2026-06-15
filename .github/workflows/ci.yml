@@ -1,0 +1,42 @@
+name: CI
+
+# Run on every push and pull request to main.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest   # GitHub's Ubuntu runners include a working Docker daemon,
+                             # so the Testcontainers integration tests run here for real.
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven        # caches ~/.m2 keyed on pom.xml, so deps download once
+
+      - name: Build and test
+        # `verify` compiles, runs unit + slice + Testcontainers integration tests.
+        # On Linux the Docker socket is /var/run/docker.sock, so the pom's socket
+        # override and api.version settings just work — no extra config needed.
+        run: ./mvnw -B verify
+
+      - name: Build Docker image
+        # Proves the Dockerfile is valid on every change. We don't push it here;
+        # add a login + push step (or `spring-boot:build-image`) when you have a registry.
+        run: docker build -t wallet:${{ github.sha }} .
+
+      - name: Upload test reports
+        if: always()           # keep reports even when the build fails
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          if-no-files-found: ignore
